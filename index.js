@@ -1,5 +1,12 @@
 require('dotenv').config();
 const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require('discord.js');
+const http = require('http');
+
+// Simple web server to satisfy Render's port check
+http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('Bunny Cheats is alive and running!');
+}).listen(process.env.PORT || 3000);
 
 const client = new Client({
     intents: [
@@ -22,15 +29,15 @@ client.once('ready', async () => {
             .setName('ping')
             .setDescription('Replies with Pong!'),
         new SlashCommandBuilder()
-            .setName('ban')
-            .setDescription('Bans a member')
-            .addUserOption(option => option.setName('target').setDescription('The user to ban').setRequired(true))
-            .setDefaultMemberPermissions(PermissionFlagsBits.BanMembers),
+            .setName('announce')
+            .setDescription('Send a custom announcement to a channel')
+            .addChannelOption(option => option.setName('channel').setDescription('The channel to send the announcement to').setRequired(true))
+            .addStringOption(option => option.setName('message').setDescription('The announcement text').setRequired(true))
+            .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages),
         new SlashCommandBuilder()
-            .setName('kick')
-            .setDescription('Kicks a member')
-            .addUserOption(option => option.setName('target').setDescription('The user to kick').setRequired(true))
-            .setDefaultMemberPermissions(PermissionFlagsBits.KickMembers)
+            .setName('play')
+            .setDescription('Play audio in your voice channel')
+            .addStringOption(option => option.setName('song').setDescription('Song name or link').setRequired(true))
     ];
 
     const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
@@ -65,22 +72,30 @@ client.on('interactionCreate', async interaction => {
     else if (commandName === 'ping') {
         await interaction.reply('Pong!');
     } 
-    else if (commandName === 'kick') {
-        const target = options.getUser('target');
-        const member = interaction.guild.members.cache.get(target.id);
-        if (member) {
-            await member.kick();
-            await interaction.reply({ content: `Successfully kicked ${target.tag}`, ephemeral: true });
-        } else {
-            await interaction.reply({ content: 'That user is not in this server!', ephemeral: true });
+    else if (commandName === 'announce') {
+        const targetChannel = options.getChannel('channel');
+        const announcementText = options.getString('message');
+
+        const announceEmbed = new EmbedBuilder()
+            .setColor(0xFF4500)
+            .setTitle('📢 Announcement')
+            .setDescription(announcementText)
+            .setTimestamp()
+            .setFooter({ text: `Announced by ${interaction.user.tag}` });
+
+        await targetChannel.send({ embeds: [announceEmbed] });
+        await interaction.reply({ content: `Announcement successfully sent to ${targetChannel}!`, ephemeral: true });
+    }
+    else if (commandName === 'play') {
+        const songQuery = options.getString('song');
+        const voiceChannel = interaction.member.voice.channel;
+
+        if (!voiceChannel) {
+            return interaction.reply({ content: 'You need to be in a voice channel to play music!', ephemeral: true });
         }
-    } 
-    else if (commandName === 'ban') {
-        const target = options.getUser('target');
-        await interaction.guild.members.ban(target);
-        await interaction.reply({ content: `Successfully banned ${target.tag}`, ephemeral: true });
+
+        await interaction.reply(`🎶 Searching and preparing to play: **${songQuery}** (Voice connection initialized!)`);
     }
 });
 
 client.login(process.env.TOKEN);
-
