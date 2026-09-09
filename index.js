@@ -18,7 +18,7 @@ const client = new Client({
     ]
 });
 
-const PREFIX = 'j!';
+const PREFIX = 'x';
 const db = {
     levels: {},
     economy: {},
@@ -141,7 +141,7 @@ client.on('messageCreate', async message => {
     }
     else if (cmd === 'joke') message.reply(`🎭 ${jokes[Math.floor(Math.random() * jokes.length)]}`);
     else if (cmd === 'ai') message.reply(`🤖 **Bunny AI:** I am fully operational and ready to assist your community, powered by Jack!`);
-    else if (cmd === 'help') message.reply('Check your slash commands (`/`) or use prefix `j!` for all utility, moderation, economy, gaming, and entertainment commands!');
+    else if (cmd === 'help') message.reply('Check your slash commands (`/`) or use prefix `x` (e.g. `xping`, `xinfo`, `xbal`, `xmeme`) for all commands!');
 });
 
 // Slash Commands & Button Handler
@@ -171,7 +171,7 @@ client.on('interactionCreate', async interaction => {
             await interaction.reply(`💼 You worked as a Discord moderator and earned **+${earned} coins**!`);
         }
         else if (commandName === 'shop') {
-            await interaction.reply('🛒 **Server Shop:**\n1. VIP Role - 2000 coins (`j!buy vip`)\n2. Custom Color - 1000 coins');
+            await interaction.reply('🛒 **Server Shop:**\n1. VIP Role - 2000 coins (`xbuy vip`)\n2. Custom Color - 1000 coins');
         }
         else if (commandName === 'mcstatus') {
             const ip = options.getString('ip');
