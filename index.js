@@ -1,6 +1,6 @@
 require('dotenv').config();
 const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType } = require('discord.js');
-const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus } = require('@discordjs/voice');
+const { joinVoiceChannel } = require('@discordjs/voice');
 const http = require('http');
 
 // Simple web server to keep Render's port check happy
@@ -43,6 +43,9 @@ client.once('ready', async () => {
         new SlashCommandBuilder().setName('poll').setDescription('Create a quick poll').addStringOption(o=>o.setName('question').setDescription('Question').setRequired(true)),
         new SlashCommandBuilder().setName('suggestion').setDescription('Submit a suggestion').addStringOption(o=>o.setName('idea').setDescription('Idea').setRequired(true)),
 
+        // Voice Channel Connect
+        new SlashCommandBuilder().setName('joinvc').setDescription('Make the bot join your voice channel'),
+
         // Admin & Broadcast
         new SlashCommandBuilder().setName('broadcast').setDescription('Broadcast a custom message to a channel').addChannelOption(o=>o.setName('channel').setDescription('Target channel').setRequired(true)).addStringOption(o=>o.setName('message').setDescription('Message').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
         new SlashCommandBuilder().setName('kick').setDescription('Kick a member').addUserOption(o=>o.setName('target').setDescription('User').setRequired(true)).addStringOption(o=>o.setName('reason').setDescription('Reason')).setDefaultMemberPermissions(PermissionFlagsBits.KickMembers),
@@ -63,7 +66,6 @@ client.once('ready', async () => {
         new SlashCommandBuilder().setName('mcstatus').setDescription('Minecraft status').addStringOption(o=>o.setName('ip').setDescription('IP').setRequired(true)),
         new SlashCommandBuilder().setName('freefire').setDescription('Free Fire updates'),
         new SlashCommandBuilder().setName('gtarp').setDescription('GTA RP stats'),
-        new SlashCommandBuilder().setName('play').setDescription('Play audio in voice channel').addStringOption(o=>o.setName('song').setDescription('Song name or link').setRequired(true)),
         new SlashCommandBuilder().setName('meme').setDescription('Random meme'),
         new SlashCommandBuilder().setName('joke').setDescription('Random joke'),
         new SlashCommandBuilder().setName('ai').setDescription('Chat with AI').addStringOption(o=>o.setName('prompt').setDescription('Prompt').setRequired(true))
@@ -72,7 +74,7 @@ client.once('ready', async () => {
     const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
     try {
         await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
-        console.log('Successfully registered commands with music, broadcast, and admin security.');
+        console.log('Successfully registered commands.');
     } catch (error) {
         console.error(error);
     }
@@ -109,7 +111,6 @@ client.on('messageCreate', async message => {
     const args = message.content.slice(PREFIX.length).trim().split(/ +/);
     const cmd = args.shift().toLowerCase();
 
-    // Prefix Commands with Admin Safeguards
     if (cmd === 'ping') message.reply(`Pong! Latency: ${client.ws.ping}ms`);
     else if (cmd === 'info') message.reply('🐰 **Bunny Cheats** • Powered by Jack | All modules active!');
     else if (cmd === 'level') message.reply(`📊 Level: ${db.levels[uid]?.level || 1} | XP: ${db.levels[uid]?.xp || 0}`);
@@ -123,6 +124,21 @@ client.on('messageCreate', async message => {
         db.economy[uid] = (db.economy[uid] || 0) + earned;
         message.reply(`💼 You worked hard and earned **+${earned} coins**!`);
     }
+    else if (cmd === 'joinvc') {
+        const channel = message.member.voice.channel;
+        if (!channel) return message.reply('❌ You need to be in a voice channel first!');
+        try {
+            joinVoiceChannel({
+                channelId: channel.id,
+                guildId: channel.guild.id,
+                adapterCreator: channel.guild.voiceAdapterCreator,
+            });
+            message.reply(`🔊 Successfully joined your voice channel: **${channel.name}**!`);
+        } catch (err) {
+            console.error(err);
+            message.reply('❌ Failed to join the voice channel.');
+        }
+    }
     else if (cmd === 'broadcast') {
         if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) return message.reply('❌ You must be an Administrator to use this command.');
         const channel = message.mentions.channels.first();
@@ -132,51 +148,32 @@ client.on('messageCreate', async message => {
         await channel.send({ embeds: [bEmbed] });
         message.reply('✅ Broadcast sent successfully!');
     }
-    else if (cmd === 'play') {
-        const channel = message.member.voice.channel;
-        if (!channel) return message.reply('❌ You need to be in a voice channel to play music!');
-        const songName = args.join(' ');
-        if (!songName) return message.reply('Please specify a song name or link!');
-
-        try {
-            const connection = joinVoiceChannel({
-                channelId: channel.id,
-                guildId: channel.guild.id,
-                adapterCreator: channel.guild.voiceAdapterCreator,
-            });
-            message.reply(`🎶 Connected to **${channel.name}** and preparing playback for: **${songName}**!`);
-        } catch (error) {
-            console.error(error);
-            message.reply('❌ Failed to connect to the voice channel.');
-        }
-    }
     else if (cmd === 'help') {
-        message.reply('Prefix commands: `xping`, `xinfo`, `xplay [song]`, `xbroadcast [#channel] [msg]`, `xbal`, `xdaily`, `xhelp` (Admin commands require Administrator permissions)');
+        message.reply('Prefix commands: `xping`, `xinfo`, `xjoinvc`, `xbroadcast`, `xbal`, `xdaily`, `xwork`, `xhelp`');
     }
 });
 
-// Slash Commands & Voice/Button Handler
+// Slash Commands & Handler
 client.on('interactionCreate', async interaction => {
     if (interaction.isChatInputCommand()) {
         const { commandName, options } = interaction;
         const uid = interaction.user.id;
 
         if (commandName === 'info') {
-            await interaction.reply({ embeds: [new EmbedBuilder().setColor(0x00FFFF).setTitle('🐰 Bunny Cheats').setDescription('Powered by Jack • Fully operational with Voice, Admin Guards, and Broadcast system')] });
+            await interaction.reply({ embeds: [new EmbedBuilder().setColor(0x00FFFF).setTitle('🐰 Bunny Cheats').setDescription('Powered by Jack • Fully operational with Voice Channel joiner, Admin Guards, and Broadcast system')] });
         }
         else if (commandName === 'ping') await interaction.reply(`Pong! Latency: ${client.ws.ping}ms`);
-        else if (commandName === 'play') {
+        else if (commandName === 'joinvc') {
             const voiceChannel = interaction.member.voice.channel;
             if (!voiceChannel) return interaction.reply({ content: '❌ You must be in a voice channel to use this command!', ephemeral: true });
-            const song = options.getString('song');
 
             try {
-                const connection = joinVoiceChannel({
+                joinVoiceChannel({
                     channelId: voiceChannel.id,
                     guildId: interaction.guild.id,
                     adapterCreator: interaction.guild.voiceAdapterCreator,
                 });
-                await interaction.reply(`🎶 Successfully joined **${voiceChannel.name}** and initialized stream for: **${song}**!`);
+                await interaction.reply({ content: `🔊 Successfully joined **${voiceChannel.name}**!`, ephemeral: true });
             } catch (err) {
                 console.error(err);
                 await interaction.reply({ content: '❌ Error connecting to voice channel.', ephemeral: true });
