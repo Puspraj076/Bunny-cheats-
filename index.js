@@ -20,17 +20,7 @@ const client = new Client({
 });
 
 const PREFIX = 'x';
-const db = { levels: {}, economy: {}, warnings: {} };
-
-const memes = [
-    'https://images.unsplash.com/photo-1534361960057-19889db9621e?w=500',
-    'https://images.unsplash.com/photo-1543466835-00a7907e9de1?w=500'
-];
-
-const jokes = [
-    'Why do programmers prefer dark mode? Because light attracts bugs!',
-    'Why did the developer go broke? Because he used up all his cache.'
-];
+const db = { levels: {}, economy: {}, warnings: {}, giveaways: {} };
 
 client.once('ready', async () => {
     console.log(`Logged in as ${client.user.tag}! Powered by Jack for Bunny Cheats.`);
@@ -55,9 +45,32 @@ client.once('ready', async () => {
         new SlashCommandBuilder().setName('warn').setDescription('Warn a user').addUserOption(o=>o.setName('target').setDescription('User').setRequired(true)).addStringOption(o=>o.setName('reason').setDescription('Reason').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
         new SlashCommandBuilder().setName('clear').setDescription('Clear messages').addIntegerOption(o=>o.setName('amount').setDescription('Amount').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages),
 
-        // Community & Economy & Gambling
+        // Community, Leaderboards & Economy
         new SlashCommandBuilder().setName('level').setDescription('Check level'),
-        new SlashCommandBuilder().setName('giveaway').setDescription('Host giveaway').addStringOption(o=>o.setName('prize').setDescription('Prize').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages),
+        new SlashCommandBuilder().setName('leaderboard').setDescription('View server top leaderboards').addStringOption(o=>o.setName('type').setDescription('Leaderboard type').setRequired(true).addChoices({name:'XP / Levels',value:'xp'},{name:'Economy Coins',value:'coins'})),
+        
+        // Timed Giveaway Subcommands
+        new SlashCommandBuilder()
+            .setName('giveaway')
+            .setDescription('Manage timed giveaways')
+            .addSubcommand(sub =>
+                sub.setName('start')
+                    .setDescription('Start a timed giveaway')
+                    .addStringOption(o=>o.setName('duration').setDescription('Duration (e.g., 10s, 5m, 2h, 1d)').setRequired(true))
+                    .addStringOption(o=>o.setName('prize').setDescription('What is being given away?').setRequired(true))
+            )
+            .addSubcommand(sub =>
+                sub.setName('end')
+                    .setDescription('End an active giveaway early')
+                    .addStringOption(o=>o.setName('message_id').setDescription('Giveaway message ID').setRequired(true))
+            )
+            .addSubcommand(sub =>
+                sub.setName('reroll')
+                    .setDescription('Reroll a new winner for a giveaway')
+                    .addStringOption(o=>o.setName('message_id').setDescription('Giveaway message ID').setRequired(true))
+            )
+            .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages),
+
         new SlashCommandBuilder().setName('balance').setDescription('Check balance'),
         new SlashCommandBuilder().setName('daily').setDescription('Claim daily coins'),
         new SlashCommandBuilder().setName('work').setDescription('Work for coins'),
@@ -76,7 +89,7 @@ client.once('ready', async () => {
     const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
     try {
         await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
-        console.log('Successfully registered all advanced commands.');
+        console.log('Successfully registered all commands including Timed Giveaways and Leaderboards.');
     } catch (error) {
         console.error(error);
     }
@@ -88,6 +101,19 @@ async function sendModLog(guild, title, description, color = 0xff0000) {
     if (!logChannel) return;
     const embed = new EmbedBuilder().setColor(color).setTitle(title).setDescription(description).setTimestamp();
     logChannel.send({ embeds: [embed] }).catch(() => {});
+}
+
+// Helper Function to Parse Duration (e.g. 10s, 5m, 2h, 1d)
+function parseDuration(timeStr) {
+    const match = timeStr.match(/^(\d+)([smhd])$/);
+    if (!match) return null;
+    const value = parseInt(match[1]);
+    const unit = match[2];
+    if (unit === 's') return value * 1000;
+    if (unit === 'm') return value * 60 * 1000;
+    if (unit === 'h') return value * 60 * 60 * 1000;
+    if (unit === 'd') return value * 24 * 60 * 60 * 1000;
+    return null;
 }
 
 // Auto-Welcome System with Banner
@@ -111,7 +137,7 @@ client.on('guildMemberAdd', member => {
 client.on('messageCreate', async message => {
     if (message.author.bot || !message.guild) return;
 
-    // 1. Auto-Mod: Anti-Invite & Anti-Scam Links
+    // Anti-Invite Auto-Mod
     if (message.content.includes('discord.gg/') || message.content.includes('discord.com/invite/')) {
         if (!message.member.permissions.has(PermissionFlagsBits.ManageMessages)) {
             message.delete().catch(() => {});
@@ -120,10 +146,12 @@ client.on('messageCreate', async message => {
         }
     }
 
-    // 2. XP Tracking
+    // XP Tracking
     const uid = message.author.id;
-    if (!db.levels[uid]) db.levels[uid] = { xp: 0, level: 1 };
+    if (!db.levels[uid]) db.levels[uid] = { xp: 0, level: 1, tag: message.author.tag };
     db.levels[uid].xp += Math.floor(Math.random() * 10) + 5;
+    db.levels[uid].tag = message.author.tag;
+
     if (db.levels[uid].xp >= db.levels[uid].level * 100) {
         db.levels[uid].level += 1;
         message.channel.send(`🎉 GG ${message.author}, you reached **Level ${db.levels[uid].level}**!`);
@@ -146,41 +174,8 @@ client.on('messageCreate', async message => {
         db.economy[uid] = (db.economy[uid] || 0) + earned;
         message.reply(`💼 You worked hard and earned **+${earned} coins**!`);
     }
-    else if (cmd === 'cf') {
-        const bet = parseInt(args[0]);
-        const choice = args[1]?.toLowerCase();
-        if (isNaN(bet) || !['heads', 'tails'].includes(choice)) return message.reply('Usage: `x cf [amount] [heads/tails]`');
-        if ((db.economy[uid] || 0) < bet) return message.reply("❌ You don't have enough coins!");
-
-        const result = Math.random() < 0.5 ? 'heads' : 'tails';
-        if (choice === result) {
-            db.economy[uid] += bet;
-            message.reply(`🪙 Landed on **${result}**! 🎉 You won **+${bet} coins**! (New Balance: ${db.economy[uid]})`);
-        } else {
-            db.economy[uid] -= bet;
-            message.reply(`🪙 Landed on **${result}**! 😢 You lost **-${bet} coins**. (New Balance: ${db.economy[uid]})`);
-        }
-    }
-    else if (cmd === 'joinvc') {
-        const channel = message.member.voice.channel;
-        if (!channel) return message.reply('❌ You need to be in a voice channel first!');
-        try {
-            joinVoiceChannel({ channelId: channel.id, guildId: channel.guild.id, adapterCreator: channel.guild.voiceAdapterCreator });
-            message.reply(`🔊 Successfully joined your voice channel: **${channel.name}**!`);
-        } catch (err) {
-            message.reply('❌ Failed to join the voice channel.');
-        }
-    }
-    else if (cmd === 'broadcast') {
-        if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) return message.reply('❌ Access Denied.');
-        const channel = message.mentions.channels.first();
-        const msgText = args.slice(1).join(' ');
-        if (!channel || !msgText) return message.reply('Usage: `xbroadcast #channel [message]`');
-        await channel.send({ embeds: [new EmbedBuilder().setColor(0xFF4500).setDescription(msgText)] });
-        message.reply('✅ Broadcast sent successfully!');
-    }
     else if (cmd === 'help') {
-        message.reply('Prefix commands: `xping`, `xinfo`, `xjoinvc`, `xbroadcast`, `xbal`, `xdaily`, `xwork`, `xcf`, `xhelp`');
+        message.reply('Prefix commands: `xping`, `xinfo`, `xjoinvc`, `xbroadcast`, `xbal`, `xdaily`, `xwork`, `xcf`, `xhelp` (Use `/` slash commands for full feature list!)');
     }
 });
 
@@ -191,7 +186,7 @@ client.on('interactionCreate', async interaction => {
         const uid = interaction.user.id;
 
         if (commandName === 'info') {
-            await interaction.reply({ embeds: [new EmbedBuilder().setColor(0x00FFFF).setTitle('🐰 Bunny Cheats').setDescription('Powered by Jack • Auto-Mod, Reaction Roles, Logs, Economy, and Tickets active.')] });
+            await interaction.reply({ embeds: [new EmbedBuilder().setColor(0x00FFFF).setTitle('🐰 Bunny Cheats').setDescription('Powered by Jack • Timed Giveaways, Leaderboards, Auto-Mod, and Tickets active.')] });
         }
         else if (commandName === 'ping') await interaction.reply(`Pong! Latency: ${client.ws.ping}ms`);
         else if (commandName === 'joinvc') {
@@ -200,11 +195,99 @@ client.on('interactionCreate', async interaction => {
             joinVoiceChannel({ channelId: voiceChannel.id, guildId: interaction.guild.id, adapterCreator: interaction.guild.voiceAdapterCreator });
             await interaction.reply({ content: `🔊 Successfully joined **${voiceChannel.name}**!`, ephemeral: true });
         }
-        else if (commandName === 'reactionrole') {
-            const embed = new EmbedBuilder().setColor(0x5865F2).setTitle('⭐ Reaction Roles').setDescription('Click the button below to get your Community Notification role!');
-            const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('role_community').setLabel('Get Community Role').setStyle(ButtonStyle.Success).setEmoji('🔔'));
-            await interaction.channel.send({ embeds: [embed], components: [row] });
-            await interaction.reply({ content: 'Reaction role panel sent!', ephemeral: true });
+        else if (commandName === 'leaderboard') {
+            const type = options.getString('type');
+            if (type === 'xp') {
+                const sorted = Object.entries(db.levels).sort((a, b) => b[1].level - a[1].level || b[1].xp - a[1].xp).slice(0, 10);
+                const desc = sorted.length ? sorted.map((([id, data], index) => `**${index + 1}.** <@${id}> — Level **${data.level}** (${data.xp} XP)`)).join('\n') : 'No data recorded yet.';
+                await interaction.reply({ embeds: [new EmbedBuilder().setColor(0xf1c40f).setTitle('🏆 Server XP Leaderboard').setDescription(desc)] });
+            } else {
+                const sorted = Object.entries(db.economy).sort((a, b) => b[1] - a[1]).slice(0, 10);
+                const desc = sorted.length ? sorted.map((([id, coins], index) => `**${index + 1}.** <@${id}> — **${coins} coins**`)).join('\n') : 'No coins recorded yet.';
+                await interaction.reply({ embeds: [new EmbedBuilder().setColor(0x2ecc71).setTitle('💰 Server Economy Leaderboard').setDescription(desc)] });
+            }
+        }
+        else if (commandName === 'giveaway') {
+            const subcommand = options.getSubcommand();
+
+            if (subcommand === 'start') {
+                const durationStr = options.getString('duration');
+                const prize = options.getString('prize');
+                const ms = parseDuration(durationStr);
+
+                if (!ms) return interaction.reply({ content: '❌ Invalid duration format! Use format like `30s`, `10m`, `2h`, or `1d`.', ephemeral: true });
+
+                const endsAt = Date.now() + ms;
+                const gEmbed = new EmbedBuilder()
+                    .setColor(0xFFD700)
+                    .setTitle('🎉 TIMED GIVEAWAY 🎉')
+                    .setDescription(`Prize: **${prize}**\nHosted by: ${interaction.user}\nEnds: <t:${Math.floor(endsAt / 1000)}:R>\n\nClick the 🎉 button below to enter!`)
+                    .setTimestamp(endsAt)
+                    .setFooter({ text: 'Ends at' });
+
+                const row = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder().setCustomId('join_giveaway').setLabel('Enter Giveaway').setStyle(ButtonStyle.Success).setEmoji('🎉')
+                );
+
+                const msg = await interaction.channel.send({ embeds: [gEmbed], components: [row] });
+                
+                // Store giveaway data
+                db.giveaways[msg.id] = {
+                    prize,
+                    host: interaction.user.id,
+                    entries: [],
+                    ended: false
+                };
+
+                await interaction.reply({ content: `✅ Giveaway started successfully!`, ephemeral: true });
+
+                // Timer to end giveaway automatically
+                setTimeout(async () => {
+                    const giveaway = db.giveaways[msg.id];
+                    if (!giveaway || giveaway.ended) return;
+                    giveaway.ended = true;
+
+                    const fetchedMsg = await interaction.channel.messages.fetch(msg.id).catch(() => {});
+                    if (!fetchedMsg) return;
+
+                    if (giveaway.entries.length === 0) {
+                        const endedEmbed = new EmbedBuilder().setColor(0xe74c3c).setTitle('🎉 GIVEAWAY ENDED 🎉').setDescription(`Prize: **${prize}**\n\n❌ No valid entries entered. No winner chosen.`);
+                        return fetchedMsg.edit({ embeds: [endedEmbed], components: [] });
+                    }
+
+                    const winnerId = giveaway.entries[Math.floor(Math.random() * giveaway.entries.length)];
+                    const winnerEmbed = new EmbedBuilder().setColor(0x2ecc71).setTitle('🎉 GIVEAWAY ENDED 🎉').setDescription(`Prize: **${prize}**\n\n🏆 Winner: <T@${winnerId}> (<@${winnerId}>)!\nCongratulations!`);
+                    fetchedMsg.edit({ embeds: [winnerEmbed], components: [] });
+                    fetchedMsg.reply(`🎊 Congratulations <@${winnerId}>! You won **${prize}**!`);
+                }, ms);
+            }
+            else if (subcommand === 'end') {
+                const messageId = options.getString('message_id');
+                const giveaway = db.giveaways[messageId];
+                if (!giveaway || giveaway.ended) return interaction.reply({ content: '❌ Giveaway not found or already ended.', ephemeral: true });
+                
+                giveaway.ended = true;
+                const fetchedMsg = await interaction.channel.messages.fetch(messageId).catch(() => {});
+                if (fetchedMsg) {
+                    if (giveaway.entries.length === 0) {
+                        fetchedMsg.edit({ embeds: [new EmbedBuilder().setColor(0xe74c3c).setTitle('🎉 GIVEAWAY ENDED 🎉').setDescription(`Prize: **${giveaway.prize}**\n\n❌ Ended early. No entries.`)], components: [] });
+                    } else {
+                        const winnerId = giveaway.entries[Math.floor(Math.random() * giveaway.entries.length)];
+                        fetchedMsg.edit({ embeds: [new EmbedBuilder().setColor(0x2ecc71).setTitle('🎉 GIVEAWAY ENDED 🎉').setDescription(`Prize: **${giveaway.prize}**\n\n🏆 Winner: <@${winnerId}>!`)], components: [] });
+                        fetchedMsg.reply(`🎊 Giveaway ended early! Congratulations <@${winnerId}> for winning **${giveaway.prize}**!`);
+                    }
+                }
+                await interaction.reply({ content: '✅ Giveaway ended successfully!', ephemeral: true });
+            }
+            else if (subcommand === 'reroll') {
+                const messageId = options.getString('message_id');
+                const giveaway = db.giveaways[messageId];
+                if (!giveaway) return interaction.reply({ content: '❌ Giveaway not found.', ephemeral: true });
+                if (giveaway.entries.length === 0) return interaction.reply({ content: '❌ No entries available to reroll.', ephemeral: true });
+
+                const newWinnerId = giveaway.entries[Math.floor(Math.random() * giveaway.entries.length)];
+                await interaction.reply(`🔄 **Giveaway Rerolled!** New winner: <@$newWinnerId> (<@${newWinnerId}>)! Congratulations!`);
+            }
         }
         else if (commandName === 'cf') {
             const bet = options.getInteger('amount');
@@ -279,8 +362,18 @@ client.on('interactionCreate', async interaction => {
             await interaction.reply({ content: 'Closing ticket...' });
             setTimeout(() => interaction.channel.delete().catch(()=>{}), 2000);
         }
+        else if (interaction.customId === 'join_giveaway') {
+            const giveaway = db.giveaways[interaction.message.id];
+            if (!giveaway || giveaway.ended) return interaction.reply({ content: '❌ This giveaway has already ended!', ephemeral: true });
+
+            if (giveaway.entries.includes(interaction.user.id)) {
+                return interaction.reply({ content: '⚠️ You are already entered into this giveaway!', ephemeral: true });
+            }
+
+            giveaway.entries.push(interaction.user.id);
+            await interaction.reply({ content: '🎉 Successfully entered the giveaway! Good luck!', ephemeral: true });
+        }
         else if (interaction.customId === 'role_community') {
-            // Find or create a role named "Community"
             let role = interaction.guild.roles.cache.find(r => r.name === 'Community');
             if (!role) {
                 role = await interaction.guild.roles.create({ name: 'Community', color: 0x3498db }).catch(() => {});
@@ -294,7 +387,7 @@ client.on('interactionCreate', async interaction => {
                     await interaction.reply({ content: '✅ Added the Community role to you!', ephemeral: true });
                 }
             } else {
-                await interaction.reply({ content: '❌ Could not assign role. Make sure the bot has "Manage Roles" permission and its role is higher than the target role!', ephemeral: true });
+                await interaction.reply({ content: '❌ Missing permissions to manage roles.', ephemeral: true });
             }
         }
     }
