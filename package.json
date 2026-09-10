@@ -1,13 +1,9 @@
 {
-  "name": "bunny-cheats-bot",
+  "name": "bunny-cheats",
   "version": "1.0.0",
   "main": "index.js",
-  "scripts": {
-    "start": "node index.js"
-  },
   "dependencies": {
-    "discord.js": "^14.14.1",
-    "dotenv": "^16.4.5"
+    "discord.js": "^14.14.0",
+    "dotenv": "^16.4.0"
   }
 }
-
