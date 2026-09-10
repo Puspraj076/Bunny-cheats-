@@ -22,6 +22,16 @@ const client = new Client({
 const PREFIX = 'x';
 const db = { levels: {}, economy: {}, warnings: {} };
 
+const memes = [
+    'https://images.unsplash.com/photo-1534361960057-19889db9621e?w=500',
+    'https://images.unsplash.com/photo-1543466835-00a7907e9de1?w=500'
+];
+
+const jokes = [
+    'Why do programmers prefer dark mode? Because light attracts bugs!',
+    'Why did the developer go broke? Because he used up all his cache.'
+];
+
 client.once('ready', async () => {
     console.log(`Logged in as ${client.user.tag}! Powered by Jack for Bunny Cheats.`);
 
@@ -29,6 +39,7 @@ client.once('ready', async () => {
         new SlashCommandBuilder().setName('info').setDescription('Get bot and creator info'),
         new SlashCommandBuilder().setName('ping').setDescription('Check bot latency'),
         new SlashCommandBuilder().setName('ticket').setDescription('Open a support ticket panel').setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
+        new SlashCommandBuilder().setName('reactionrole').setDescription('Send reaction role panel').setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles),
         new SlashCommandBuilder().setName('reminder').setDescription('Set a reminder').addIntegerOption(o=>o.setName('mins').setDescription('Minutes').setRequired(true)).addStringOption(o=>o.setName('task').setDescription('Task').setRequired(true)),
         new SlashCommandBuilder().setName('poll').setDescription('Create a quick poll').addStringOption(o=>o.setName('question').setDescription('Question').setRequired(true)),
         new SlashCommandBuilder().setName('suggestion').setDescription('Submit a suggestion').addStringOption(o=>o.setName('idea').setDescription('Idea').setRequired(true)),
@@ -44,12 +55,13 @@ client.once('ready', async () => {
         new SlashCommandBuilder().setName('warn').setDescription('Warn a user').addUserOption(o=>o.setName('target').setDescription('User').setRequired(true)).addStringOption(o=>o.setName('reason').setDescription('Reason').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
         new SlashCommandBuilder().setName('clear').setDescription('Clear messages').addIntegerOption(o=>o.setName('amount').setDescription('Amount').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages),
 
-        // Community & Economy
+        // Community & Economy & Gambling
         new SlashCommandBuilder().setName('level').setDescription('Check level'),
         new SlashCommandBuilder().setName('giveaway').setDescription('Host giveaway').addStringOption(o=>o.setName('prize').setDescription('Prize').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages),
         new SlashCommandBuilder().setName('balance').setDescription('Check balance'),
         new SlashCommandBuilder().setName('daily').setDescription('Claim daily coins'),
         new SlashCommandBuilder().setName('work').setDescription('Work for coins'),
+        new SlashCommandBuilder().setName('cf').setDescription('Gamble coins on a Coinflip').addIntegerOption(o=>o.setName('amount').setDescription('Coins to bet').setRequired(true)).addStringOption(o=>o.setName('choice').setDescription('Heads or Tails').setRequired(true).addChoices({name:'Heads',value:'heads'},{name:'Tails',value:'tails'})),
         new SlashCommandBuilder().setName('shop').setDescription('View shop'),
 
         // Gaming & Entertainment
@@ -64,11 +76,19 @@ client.once('ready', async () => {
     const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
     try {
         await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
-        console.log('Successfully registered commands.');
+        console.log('Successfully registered all advanced commands.');
     } catch (error) {
         console.error(error);
     }
 });
+
+// Helper Function for Mod Logs
+async function sendModLog(guild, title, description, color = 0xff0000) {
+    const logChannel = guild.channels.cache.find(c => c.name === 'mod-logs' || c.name === 'logs');
+    if (!logChannel) return;
+    const embed = new EmbedBuilder().setColor(color).setTitle(title).setDescription(description).setTimestamp();
+    logChannel.send({ embeds: [embed] }).catch(() => {});
+}
 
 // Auto-Welcome System with Banner
 client.on('guildMemberAdd', member => {
@@ -87,9 +107,20 @@ client.on('guildMemberAdd', member => {
     welcomeChannel.send({ embeds: [welcomeEmbed] });
 });
 
+// Auto-Moderation & Message Handler
 client.on('messageCreate', async message => {
-    if (message.author.bot) return;
+    if (message.author.bot || !message.guild) return;
 
+    // 1. Auto-Mod: Anti-Invite & Anti-Scam Links
+    if (message.content.includes('discord.gg/') || message.content.includes('discord.com/invite/')) {
+        if (!message.member.permissions.has(PermissionFlagsBits.ManageMessages)) {
+            message.delete().catch(() => {});
+            sendModLog(message.guild, '🛡️ Auto-Mod Triggered', `Deleted invite link sent by ${message.author.tag} in ${message.channel}`);
+            return message.channel.send(`${message.author}, Discord invites are not allowed here!`).then(m => setTimeout(() => m.delete().catch(()=>{}), 4000));
+        }
+    }
+
+    // 2. XP Tracking
     const uid = message.author.id;
     if (!db.levels[uid]) db.levels[uid] = { xp: 0, level: 1 };
     db.levels[uid].xp += Math.floor(Math.random() * 10) + 5;
@@ -115,81 +146,93 @@ client.on('messageCreate', async message => {
         db.economy[uid] = (db.economy[uid] || 0) + earned;
         message.reply(`💼 You worked hard and earned **+${earned} coins**!`);
     }
+    else if (cmd === 'cf') {
+        const bet = parseInt(args[0]);
+        const choice = args[1]?.toLowerCase();
+        if (isNaN(bet) || !['heads', 'tails'].includes(choice)) return message.reply('Usage: `x cf [amount] [heads/tails]`');
+        if ((db.economy[uid] || 0) < bet) return message.reply("❌ You don't have enough coins!");
+
+        const result = Math.random() < 0.5 ? 'heads' : 'tails';
+        if (choice === result) {
+            db.economy[uid] += bet;
+            message.reply(`🪙 Landed on **${result}**! 🎉 You won **+${bet} coins**! (New Balance: ${db.economy[uid]})`);
+        } else {
+            db.economy[uid] -= bet;
+            message.reply(`🪙 Landed on **${result}**! 😢 You lost **-${bet} coins**. (New Balance: ${db.economy[uid]})`);
+        }
+    }
     else if (cmd === 'joinvc') {
         const channel = message.member.voice.channel;
         if (!channel) return message.reply('❌ You need to be in a voice channel first!');
         try {
-            joinVoiceChannel({
-                channelId: channel.id,
-                guildId: channel.guild.id,
-                adapterCreator: channel.guild.voiceAdapterCreator,
-            });
+            joinVoiceChannel({ channelId: channel.id, guildId: channel.guild.id, adapterCreator: channel.guild.voiceAdapterCreator });
             message.reply(`🔊 Successfully joined your voice channel: **${channel.name}**!`);
         } catch (err) {
-            console.error(err);
             message.reply('❌ Failed to join the voice channel.');
         }
     }
     else if (cmd === 'broadcast') {
-        if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) return message.reply('❌ You must be an Administrator to use this command.');
+        if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) return message.reply('❌ Access Denied.');
         const channel = message.mentions.channels.first();
         const msgText = args.slice(1).join(' ');
         if (!channel || !msgText) return message.reply('Usage: `xbroadcast #channel [message]`');
-        
-        // Clean embed without "Broadcast Notice" header or footer info
-        const bEmbed = new EmbedBuilder().setColor(0xFF4500).setDescription(msgText);
-        await channel.send({ embeds: [bEmbed] });
+        await channel.send({ embeds: [new EmbedBuilder().setColor(0xFF4500).setDescription(msgText)] });
         message.reply('✅ Broadcast sent successfully!');
     }
     else if (cmd === 'help') {
-        message.reply('Prefix commands: `xping`, `xinfo`, `xjoinvc`, `xbroadcast`, `xbal`, `xdaily`, `xwork`, `xhelp`');
+        message.reply('Prefix commands: `xping`, `xinfo`, `xjoinvc`, `xbroadcast`, `xbal`, `xdaily`, `xwork`, `xcf`, `xhelp`');
     }
 });
 
-// Slash Commands & Handler
+// Slash Commands & Handlers
 client.on('interactionCreate', async interaction => {
     if (interaction.isChatInputCommand()) {
         const { commandName, options } = interaction;
         const uid = interaction.user.id;
 
         if (commandName === 'info') {
-            await interaction.reply({ embeds: [new EmbedBuilder().setColor(0x00FFFF).setTitle('🐰 Bunny Cheats').setDescription('Powered by Jack • Fully operational with Voice Channel joiner, Admin Guards, and Broadcast system')] });
+            await interaction.reply({ embeds: [new EmbedBuilder().setColor(0x00FFFF).setTitle('🐰 Bunny Cheats').setDescription('Powered by Jack • Auto-Mod, Reaction Roles, Logs, Economy, and Tickets active.')] });
         }
         else if (commandName === 'ping') await interaction.reply(`Pong! Latency: ${client.ws.ping}ms`);
         else if (commandName === 'joinvc') {
             const voiceChannel = interaction.member.voice.channel;
-            if (!voiceChannel) return interaction.reply({ content: '❌ You must be in a voice channel to use this command!', ephemeral: true });
+            if (!voiceChannel) return interaction.reply({ content: '❌ You must be in a voice channel!', ephemeral: true });
+            joinVoiceChannel({ channelId: voiceChannel.id, guildId: interaction.guild.id, adapterCreator: interaction.guild.voiceAdapterCreator });
+            await interaction.reply({ content: `🔊 Successfully joined **${voiceChannel.name}**!`, ephemeral: true });
+        }
+        else if (commandName === 'reactionrole') {
+            const embed = new EmbedBuilder().setColor(0x5865F2).setTitle('⭐ Reaction Roles').setDescription('Click the button below to get your Community Notification role!');
+            const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('role_community').setLabel('Get Community Role').setStyle(ButtonStyle.Success).setEmoji('🔔'));
+            await interaction.channel.send({ embeds: [embed], components: [row] });
+            await interaction.reply({ content: 'Reaction role panel sent!', ephemeral: true });
+        }
+        else if (commandName === 'cf') {
+            const bet = options.getInteger('amount');
+            const choice = options.getString('choice');
+            if ((db.economy[uid] || 0) < bet) return interaction.reply({ content: "❌ You don't have enough coins for this bet!", ephemeral: true });
 
-            try {
-                joinVoiceChannel({
-                    channelId: voiceChannel.id,
-                    guildId: interaction.guild.id,
-                    adapterCreator: interaction.guild.voiceAdapterCreator,
-                });
-                await interaction.reply({ content: `🔊 Successfully joined **${voiceChannel.name}**!`, ephemeral: true });
-            } catch (err) {
-                console.error(err);
-                await interaction.reply({ content: '❌ Error connecting to voice channel.', ephemeral: true });
+            const result = Math.random() < 0.5 ? 'heads' : 'tails';
+            if (choice === result) {
+                db.economy[uid] += bet;
+                await interaction.reply(`🪙 Coin flipped: **${result}**! 🎉 You won **+${bet} coins**!`);
+            } else {
+                db.economy[uid] -= bet;
+                await interaction.reply(`🪙 Coin flipped: **${result}**! 😢 You lost **-${bet} coins**.`);
             }
         }
         else if (commandName === 'broadcast') {
-            if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
-                return interaction.reply({ content: '❌ Access Denied: You need Administrator permissions.', ephemeral: true });
-            }
+            if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) return interaction.reply({ content: '❌ Access Denied.', ephemeral: true });
             const targetChannel = options.getChannel('channel');
             const msg = options.getString('message');
-
-            // Clean embed without headers, footers, or timestamps
-            const bEmbed = new EmbedBuilder().setColor(0xFF4500).setDescription(msg);
-            
-            await targetChannel.send({ embeds: [bEmbed] });
-            await interaction.reply({ content: `✅ Broadcast successfully delivered to ${targetChannel}!`, ephemeral: true });
+            await targetChannel.send({ embeds: [new EmbedBuilder().setColor(0xFF4500).setDescription(msg)] });
+            await interaction.reply({ content: `✅ Broadcast delivered to ${targetChannel}!`, ephemeral: true });
         }
         else if (commandName === 'kick') {
             if (!interaction.member.permissions.has(PermissionFlagsBits.KickMembers)) return interaction.reply({ content: '❌ Access Denied.', ephemeral: true });
             const target = options.getUser('target');
             const reason = options.getString('reason') || 'No reason';
             await interaction.guild.members.kick(target, reason);
+            sendModLog(interaction.guild, '👢 Member Kicked', `User: ${target.tag}\nModerator: ${interaction.user.tag}\nReason: ${reason}`);
             await interaction.reply({ content: `✅ Kicked ${target.tag}.`, ephemeral: true });
         }
         else if (commandName === 'ban') {
@@ -197,7 +240,17 @@ client.on('interactionCreate', async interaction => {
             const target = options.getUser('target');
             const reason = options.getString('reason') || 'No reason';
             await interaction.guild.members.ban(target, { reason });
+            sendModLog(interaction.guild, '🔨 Member Banned', `User: ${target.tag}\nModerator: ${interaction.user.tag}\nReason: ${reason}`);
             await interaction.reply({ content: `✅ Banned ${target.tag}.`, ephemeral: true });
+        }
+        else if (commandName === 'timeout') {
+            if (!interaction.member.permissions.has(PermissionFlagsBits.ModerateMembers)) return interaction.reply({ content: '❌ Access Denied.', ephemeral: true });
+            const target = options.getUser('target');
+            const mins = options.getInteger('mins');
+            const member = interaction.guild.members.cache.get(target.id);
+            await member.timeout(mins * 60 * 1000);
+            sendModLog(interaction.guild, '⏳ Member Timed Out', `User: ${target.tag}\nDuration: ${mins} mins\nModerator: ${interaction.user.tag}`);
+            await interaction.reply({ content: `✅ Timed out ${target.tag} for ${mins} mins.`, ephemeral: true });
         }
         else if (commandName === 'ticket') {
             const tEmbed = new EmbedBuilder().setColor(0x5865F2).setTitle('🎫 Support Tickets').setDescription('Click below to open a private ticket.');
@@ -225,6 +278,24 @@ client.on('interactionCreate', async interaction => {
         else if (interaction.customId === 'close_ticket') {
             await interaction.reply({ content: 'Closing ticket...' });
             setTimeout(() => interaction.channel.delete().catch(()=>{}), 2000);
+        }
+        else if (interaction.customId === 'role_community') {
+            // Find or create a role named "Community"
+            let role = interaction.guild.roles.cache.find(r => r.name === 'Community');
+            if (!role) {
+                role = await interaction.guild.roles.create({ name: 'Community', color: 0x3498db }).catch(() => {});
+            }
+            if (role) {
+                if (interaction.member.roles.cache.has(role.id)) {
+                    await interaction.member.roles.remove(role);
+                    await interaction.reply({ content: '❌ Removed the Community role from you.', ephemeral: true });
+                } else {
+                    await interaction.member.roles.add(role);
+                    await interaction.reply({ content: '✅ Added the Community role to you!', ephemeral: true });
+                }
+            } else {
+                await interaction.reply({ content: '❌ Could not assign role. Make sure the bot has "Manage Roles" permission and its role is higher than the target role!', ephemeral: true });
+            }
         }
     }
 });
