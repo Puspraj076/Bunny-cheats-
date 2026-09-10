@@ -1,6 +1,5 @@
 require('dotenv').config();
 const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType } = require('discord.js');
-const { joinVoiceChannel } = require('@discordjs/voice');
 const http = require('http');
 
 // Simple web server to keep Render's port check happy
@@ -43,8 +42,8 @@ client.once('ready', async () => {
         new SlashCommandBuilder().setName('poll').setDescription('Create a quick poll').addStringOption(o=>o.setName('question').setDescription('Question').setRequired(true)),
         new SlashCommandBuilder().setName('suggestion').setDescription('Submit a suggestion').addStringOption(o=>o.setName('idea').setDescription('Idea').setRequired(true)),
 
-        // Voice Channel Connect
-        new SlashCommandBuilder().setName('joinvc').setDescription('Make the bot join your voice channel'),
+        // Voice Channel Info
+        new SlashCommandBuilder().setName('joinvc').setDescription('Check voice channel status'),
 
         // Admin & Broadcast
         new SlashCommandBuilder().setName('broadcast').setDescription('Broadcast a custom message to a channel').addChannelOption(o=>o.setName('channel').setDescription('Target channel').setRequired(true)).addStringOption(o=>o.setName('message').setDescription('Message').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
@@ -80,7 +79,7 @@ client.once('ready', async () => {
     }
 });
 
-// Auto-Welcome System & XP Tracker
+// Auto-Welcome System with Banner Banner
 client.on('guildMemberAdd', member => {
     const welcomeChannel = member.guild.systemChannel || member.guild.channels.cache.find(ch => ch.name.includes('welcome') || ch.name.includes('general'));
     if (!welcomeChannel) return;
@@ -90,7 +89,9 @@ client.on('guildMemberAdd', member => {
         .setTitle('👋 Welcome to the Server!')
         .setDescription(`Hey ${member}, welcome to **${member.guild.name}**! Powered by Jack.`)
         .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
-        .setTimestamp();
+        .setImage('YOUR_BANNER_IMAGE_URL_HERE') // Paste your Discord image link here!
+        .setTimestamp()
+        .setFooter({ text: 'Bunny Cheats • Welcome Bot' });
 
     welcomeChannel.send({ embeds: [welcomeEmbed] });
 });
@@ -127,17 +128,7 @@ client.on('messageCreate', async message => {
     else if (cmd === 'joinvc') {
         const channel = message.member.voice.channel;
         if (!channel) return message.reply('❌ You need to be in a voice channel first!');
-        try {
-            joinVoiceChannel({
-                channelId: channel.id,
-                guildId: channel.guild.id,
-                adapterCreator: channel.guild.voiceAdapterCreator,
-            });
-            message.reply(`🔊 Successfully joined your voice channel: **${channel.name}**!`);
-        } catch (err) {
-            console.error(err);
-            message.reply('❌ Failed to join the voice channel.');
-        }
+        message.reply(`🔊 Ready to join **${channel.name}**!`);
     }
     else if (cmd === 'broadcast') {
         if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) return message.reply('❌ You must be an Administrator to use this command.');
@@ -160,24 +151,13 @@ client.on('interactionCreate', async interaction => {
         const uid = interaction.user.id;
 
         if (commandName === 'info') {
-            await interaction.reply({ embeds: [new EmbedBuilder().setColor(0x00FFFF).setTitle('🐰 Bunny Cheats').setDescription('Powered by Jack • Fully operational with Voice Channel joiner, Admin Guards, and Broadcast system')] });
+            await interaction.reply({ embeds: [new EmbedBuilder().setColor(0x00FFFF).setTitle('🐰 Bunny Cheats').setDescription('Powered by Jack • Fully operational with Admin Guards and Broadcast system')] });
         }
         else if (commandName === 'ping') await interaction.reply(`Pong! Latency: ${client.ws.ping}ms`);
         else if (commandName === 'joinvc') {
             const voiceChannel = interaction.member.voice.channel;
             if (!voiceChannel) return interaction.reply({ content: '❌ You must be in a voice channel to use this command!', ephemeral: true });
-
-            try {
-                joinVoiceChannel({
-                    channelId: voiceChannel.id,
-                    guildId: interaction.guild.id,
-                    adapterCreator: interaction.guild.voiceAdapterCreator,
-                });
-                await interaction.reply({ content: `🔊 Successfully joined **${voiceChannel.name}**!`, ephemeral: true });
-            } catch (err) {
-                console.error(err);
-                await interaction.reply({ content: '❌ Error connecting to voice channel.', ephemeral: true });
-            }
+            await interaction.reply({ content: `🔊 Detected you in **${voiceChannel.name}**!`, ephemeral: true });
         }
         else if (commandName === 'broadcast') {
             if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
