@@ -28,7 +28,8 @@ client.once('ready', async () => {
     const commands = [
         new SlashCommandBuilder().setName('info').setDescription('Get bot and creator info'),
         new SlashCommandBuilder().setName('ping').setDescription('Check bot latency'),
-        new SlashCommandBuilder().setName('ticket').setDescription('Open a support or purchase ticket panel depending on the channel').setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
+        new SlashCommandBuilder().setName('supportticket').setDescription('Send the support ticket panel').setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
+        new SlashCommandBuilder().setName('purchaseticket').setDescription('Send the purchase ticket panel').setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels),
         new SlashCommandBuilder().setName('reactionrole').setDescription('Send reaction role panel').setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles),
         new SlashCommandBuilder().setName('panel').setDescription('Send a clean feature configuration panel').addStringOption(o => o.setName('title').setDescription('Panel title/header').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages),
         new SlashCommandBuilder().setName('reminder').setDescription('Set a reminder').addIntegerOption(o=>o.setName('mins').setDescription('Minutes').setRequired(true)).addStringOption(o=>o.setName('task').setDescription('Task').setRequired(true)),
@@ -90,7 +91,7 @@ client.once('ready', async () => {
     const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
     try {
         await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
-        console.log('Successfully registered all commands including channel-specific tickets.');
+        console.log('Successfully registered all commands including separate ticket panels.');
     } catch (error) {
         console.error(error);
     }
@@ -187,7 +188,7 @@ client.on('interactionCreate', async interaction => {
         const uid = interaction.user.id;
 
         if (commandName === 'info') {
-            await interaction.reply({ embeds: [new EmbedBuilder().setColor(0x00FFFF).setTitle('🐰 Bunny Cheats').setDescription('Powered by Jack • Timed Giveaways, Leaderboards, Auto-Mod, and Tickets active.')] });
+            await interaction.reply({ embeds: [new EmbedBuilder().setColor(0x00FFFF).setTitle('🐰 Bunny Cheats').setDescription('Powered by Jack • Separate Tickets, Giveaways, Leaderboards, Auto-Mod active.')] });
         }
         else if (commandName === 'ping') await interaction.reply(`Pong! Latency: ${client.ws.ping}ms`);
         else if (commandName === 'joinvc') {
@@ -223,29 +224,39 @@ client.on('interactionCreate', async interaction => {
             await interaction.channel.send({ embeds: [cleanEmbed] });
             await interaction.reply({ content: '✅ Panel sent successfully!', ephemeral: true });
         }
-        else if (commandName === 'ticket') {
+        else if (commandName === 'supportticket') {
             if (!interaction.member.permissions.has(PermissionFlagsBits.ManageChannels)) {
                 return interaction.reply({ content: '❌ Access Denied.', ephemeral: true });
             }
 
-            const channelNameLower = interaction.channel.name.toLowerCase();
-            const isPurchaseChannel = channelNameLower.includes('purchase');
-
             const tEmbed = new EmbedBuilder()
-                .setColor(isPurchaseChannel ? 0x2ecc71 : 0x5865F2)
-                .setTitle(isPurchaseChannel ? '🛒 Purchase Ticket Center' : '🛠️ Support Ticket Center')
-                .setDescription(isPurchaseChannel ? 'Click the button below to open a purchase ticket.' : 'Click the button below to open a support ticket.');
-
-            const customId = isPurchaseChannel ? 'open_purchase_ticket' : 'open_support_ticket';
-            const buttonLabel = isPurchaseChannel ? 'Create Purchase Ticket' : 'Create Support Ticket';
-            const buttonStyle = isPurchaseChannel ? ButtonStyle.Success : ButtonStyle.Primary;
+                .setColor(0x3498db)
+                .setTitle('🛠️ Support Tickets')
+                .setDescription('Click below to open a private support ticket.');
 
             const row = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId(customId).setLabel(buttonLabel).setStyle(buttonStyle).setEmoji(isPurchaseChannel ? '🛒' : '🎫')
+                new ButtonBuilder().setCustomId('open_support_ticket').setLabel('Create Support Ticket').setStyle(ButtonStyle.Primary).setEmoji('🎫')
             );
 
             await interaction.channel.send({ embeds: [tEmbed], components: [row] });
-            await interaction.reply({ content: `✅ ${isPurchaseChannel ? 'Purchase' : 'Support'} ticket panel sent to this channel!`, ephemeral: true });
+            await interaction.reply({ content: '✅ Support ticket panel sent!', ephemeral: true });
+        }
+        else if (commandName === 'purchaseticket') {
+            if (!interaction.member.permissions.has(PermissionFlagsBits.ManageChannels)) {
+                return interaction.reply({ content: '❌ Access Denied.', ephemeral: true });
+            }
+
+            const tEmbed = new EmbedBuilder()
+                .setColor(0x2ecc71)
+                .setTitle('🛒 Purchase Tickets')
+                .setDescription('Click below to open a private purchase ticket.');
+
+            const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId('open_purchase_ticket').setLabel('Create Purchase Ticket').setStyle(ButtonStyle.Success).setEmoji('🛒')
+            );
+
+            await interaction.channel.send({ embeds: [tEmbed], components: [row] });
+            await interaction.reply({ content: '✅ Purchase ticket panel sent!', ephemeral: true });
         }
         else if (commandName === 'leaderboard') {
             const type = options.getString('type');
