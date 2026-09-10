@@ -22,16 +22,6 @@ const client = new Client({
 const PREFIX = 'x';
 const db = { levels: {}, economy: {}, warnings: {} };
 
-const memes = [
-    'https://images.unsplash.com/photo-1534361960057-19889db9621e?w=500',
-    'https://images.unsplash.com/photo-1543466835-00a7907e9de1?w=500'
-];
-
-const jokes = [
-    'Why do programmers prefer dark mode? Because light attracts bugs!',
-    'Why did the developer go broke? Because he used up all his cache.'
-];
-
 client.once('ready', async () => {
     console.log(`Logged in as ${client.user.tag}! Powered by Jack for Bunny Cheats.`);
 
@@ -90,7 +80,7 @@ client.on('guildMemberAdd', member => {
         .setTitle('👋 Welcome to the Server!')
         .setDescription(`Hey ${member}, welcome to **${member.guild.name}**! Powered by Jack.`)
         .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
-        .setImage('https://media.giphy.com/media/l41YtZQbZXElABNn2/giphy.gif') // You can replace with your GIF link
+        .setImage('https://media.giphy.com/media/l41YtZQbZXElABNn2/giphy.gif')
         .setTimestamp()
         .setFooter({ text: 'Bunny Cheats • Welcome Bot' });
 
@@ -145,7 +135,9 @@ client.on('messageCreate', async message => {
         const channel = message.mentions.channels.first();
         const msgText = args.slice(1).join(' ');
         if (!channel || !msgText) return message.reply('Usage: `xbroadcast #channel [message]`');
-        const bEmbed = new EmbedBuilder().setColor(0xFF4500).setTitle('📢 Broadcast Notice').setDescription(msgText).setTimestamp().setFooter({ text: `Broadcasted by ${message.author.tag}` });
+        
+        // Clean embed without "Broadcast Notice" header or footer info
+        const bEmbed = new EmbedBuilder().setColor(0xFF4500).setDescription(msgText);
         await channel.send({ embeds: [bEmbed] });
         message.reply('✅ Broadcast sent successfully!');
     }
@@ -186,7 +178,9 @@ client.on('interactionCreate', async interaction => {
             }
             const targetChannel = options.getChannel('channel');
             const msg = options.getString('message');
-            const bEmbed = new EmbedBuilder().setColor(0xFF4500).setTitle('📢 Broadcast Notice').setDescription(msg).setTimestamp().setFooter({ text: `Broadcast by ${interaction.user.tag}` });
+
+            // Clean embed without headers, footers, or timestamps
+            const bEmbed = new EmbedBuilder().setColor(0xFF4500).setDescription(msg);
             
             await targetChannel.send({ embeds: [bEmbed] });
             await interaction.reply({ content: `✅ Broadcast successfully delivered to ${targetChannel}!`, ephemeral: true });
