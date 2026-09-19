@@ -130,7 +130,7 @@ client.on('guildMemberAdd', member => {
         .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
         .setImage('https://media.giphy.com/media/l41YtZQbZXElABNn2/giphy.gif')
         .setTimestamp()
-        .setFooter({ text: 'Bunny Cheats • Welcome Bot' });
+        .setFooter({ text: 'Jack Cheats • Welcome Bot' });
 
     welcomeChannel.send({ embeds: [welcomeEmbed] });
 });
